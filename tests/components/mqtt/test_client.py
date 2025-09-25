@@ -282,6 +282,65 @@ async def test_subscribe_topic(
         unsub()
 
 
+async def test_subscribe_topic_and_wait(
+    hass: HomeAssistant,
+    mock_debouncer: asyncio.Event,
+    setup_with_birth_msg_client_mock: MqttMockPahoClient,
+    recorded_calls: list[ReceiveMessage],
+    record_calls: MessageCallbackType,
+) -> None:
+    """Test the subscription of a topic."""
+    await mock_debouncer.wait()
+    mock_debouncer.clear()
+    unsub_no_wait = await mqtt.async_subscribe(hass, "other-test-topic/#", record_calls)
+    unsub_wait = await mqtt.async_subscribe(hass, "test-topic", record_calls, wait=True)
+
+    async_fire_mqtt_message(hass, "test-topic", "test-payload")
+    async_fire_mqtt_message(hass, "other-test-topic/test", "other-test-payload")
+
+    await hass.async_block_till_done()
+    assert len(recorded_calls) == 2
+    assert recorded_calls[0].topic == "test-topic"
+    assert recorded_calls[0].payload == "test-payload"
+    assert recorded_calls[1].topic == "other-test-topic/test"
+    assert recorded_calls[1].payload == "other-test-payload"
+
+    unsub_no_wait()
+    unsub_wait()
+
+    async_fire_mqtt_message(hass, "test-topic", "test-payload")
+
+    await hass.async_block_till_done()
+    assert len(recorded_calls) == 2
+
+    # Cannot unsubscribe twice
+    with pytest.raises(HomeAssistantError):
+        unsub_no_wait()
+
+    with pytest.raises(HomeAssistantError):
+        unsub_wait()
+
+
+async def test_subscribe_topic_and_wait_timeout(
+    hass: HomeAssistant,
+    mock_debouncer: asyncio.Event,
+    setup_with_birth_msg_client_mock: MqttMockPahoClient,
+    recorded_calls: list[ReceiveMessage],
+    record_calls: MessageCallbackType,
+) -> None:
+    """Test the subscription of a topic."""
+    await mock_debouncer.wait()
+    mock_debouncer.clear()
+    with (
+        patch("homeassistant.components.mqtt.client.SUBSCRIBE_TIMEOUT", 0),
+        pytest.raises(HomeAssistantError) as exc,
+    ):
+        await mqtt.async_subscribe(hass, "test-topic", record_calls, wait=True)
+
+    assert exc.value.translation_domain == mqtt.DOMAIN
+    assert exc.value.translation_key == "subscribe_timeout"
+
+
 @pytest.mark.usefixtures("mqtt_mock_entry")
 async def test_subscribe_topic_not_initialize(
     hass: HomeAssistant, record_calls: MessageCallbackType
