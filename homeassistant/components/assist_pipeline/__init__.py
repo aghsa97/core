@@ -89,46 +89,65 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class PipelineAudioConfig:
+    stt_metadata: stt.SpeechMetadata
+    stt_stream: AsyncIterable[bytes]
+    tts_audio_output: str | dict[str, Any] | None = None
+    audio_settings: AudioSettings | None = None
+
+
+@dataclass
+class PipelineContextConfig:
+    wake_word_phrase: str | None = None
+    wake_word_settings: WakeWordSettings | None = None
+    pipeline_id: str | None = None
+    conversation_id: str | None = None
+    conversation_extra_system_prompt: str | None = None
+    device_id: str | None = None
+    satellite_id: str | None = None
+    start_stage: PipelineStage = PipelineStage.STT
+    end_stage: PipelineStage = PipelineStage.TTS
+
+
 async def async_pipeline_from_audio_stream(
     hass: HomeAssistant,
     *,
     context: Context,
     event_callback: PipelineEventCallback,
-    stt_metadata: stt.SpeechMetadata,
-    stt_stream: AsyncIterable[bytes],
-    wake_word_phrase: str | None = None,
-    pipeline_id: str | None = None,
-    conversation_id: str | None = None,
-    tts_audio_output: str | dict[str, Any] | None = None,
-    wake_word_settings: WakeWordSettings | None = None,
-    audio_settings: AudioSettings | None = None,
-    device_id: str | None = None,
-    start_stage: PipelineStage = PipelineStage.STT,
-    end_stage: PipelineStage = PipelineStage.TTS,
-    conversation_extra_system_prompt: str | None = None,
+    audio_config: PipelineAudioConfig,
+    context_config: PipelineContextConfig,
 ) -> None:
     """Create an audio pipeline from an audio stream.
 
     Raises PipelineNotFound if no pipeline is found.
     """
-    with chat_session.async_get_chat_session(hass, conversation_id) as session:
+    with chat_session.async_get_chat_session(
+        hass, context_config.conversation_id
+    ) as session:
         pipeline_input = PipelineInput(
             session=session,
-            device_id=device_id,
-            stt_metadata=stt_metadata,
-            stt_stream=stt_stream,
-            wake_word_phrase=wake_word_phrase,
-            conversation_extra_system_prompt=conversation_extra_system_prompt,
+            device_id=context_config.device_id,
+            stt_metadata=audio_config.stt_metadata,
+            stt_stream=audio_config.stt_stream,
+            wake_word_phrase=context_config.wake_word_phrase,
+            conversation_extra_system_prompt=context_config.conversation_extra_system_prompt,
             run=PipelineRun(
                 hass,
                 context=context,
-                pipeline=async_get_pipeline(hass, pipeline_id=pipeline_id),
-                start_stage=start_stage,
-                end_stage=end_stage,
+                pipeline=async_get_pipeline(
+                    hass, pipeline_id=context_config.pipeline_id
+                ),
+                start_stage=context_config.start_stage,
+                end_stage=context_config.end_stage,
                 event_callback=event_callback,
-                tts_audio_output=tts_audio_output,
-                wake_word_settings=wake_word_settings,
-                audio_settings=audio_settings or AudioSettings(),
+                tts_audio_output=audio_config.tts_audio_output,
+                wake_word_settings=context_config.wake_word_settings,
+                audio_settings=audio_config.audio_settings,
             ),
         )
         await pipeline_input.validate()

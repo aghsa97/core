@@ -317,48 +317,41 @@ def async_get_pipelines(hass: HomeAssistant) -> list[Pipeline]:
     return list(pipeline_data.pipeline_store.data.values())
 
 
+@dataclass
+class PipelineUpdateConfig:
+    """Encapsulates all update fields for a pipeline."""
+
+    conversation_engine: str | UndefinedType = UNDEFINED
+    conversation_language: str | UndefinedType = UNDEFINED
+    language: str | UndefinedType = UNDEFINED
+    name: str | UndefinedType = UNDEFINED
+    stt_engine: str | None | UndefinedType = UNDEFINED
+    stt_language: str | None | UndefinedType = UNDEFINED
+    tts_engine: str | None | UndefinedType = UNDEFINED
+    tts_language: str | None | UndefinedType = UNDEFINED
+    tts_voice: str | None | UndefinedType = UNDEFINED
+    wake_word_entity: str | None | UndefinedType = UNDEFINED
+    wake_word_id: str | None | UndefinedType = UNDEFINED
+    prefer_local_intents: bool | UndefinedType = UNDEFINED
+
+
 async def async_update_pipeline(
     hass: HomeAssistant,
     pipeline: Pipeline,
     *,
-    conversation_engine: str | UndefinedType = UNDEFINED,
-    conversation_language: str | UndefinedType = UNDEFINED,
-    language: str | UndefinedType = UNDEFINED,
-    name: str | UndefinedType = UNDEFINED,
-    stt_engine: str | None | UndefinedType = UNDEFINED,
-    stt_language: str | None | UndefinedType = UNDEFINED,
-    tts_engine: str | None | UndefinedType = UNDEFINED,
-    tts_language: str | None | UndefinedType = UNDEFINED,
-    tts_voice: str | None | UndefinedType = UNDEFINED,
-    wake_word_entity: str | None | UndefinedType = UNDEFINED,
-    wake_word_id: str | None | UndefinedType = UNDEFINED,
-    prefer_local_intents: bool | UndefinedType = UNDEFINED,
+    update_config: PipelineUpdateConfig,
 ) -> None:
     """Update a pipeline."""
     pipeline_data = hass.data[KEY_ASSIST_PIPELINE]
-
-    updates: dict[str, Any] = pipeline.to_json()
+    updates = pipeline.to_json()
     updates.pop("id")
-    # Refactor this once we bump to Python 3.12
-    # and have https://peps.python.org/pep-0692/
+
+    # Apply defined fields only
     updates.update(
         {
-            key: val
-            for key, val in (
-                ("conversation_engine", conversation_engine),
-                ("conversation_language", conversation_language),
-                ("language", language),
-                ("name", name),
-                ("stt_engine", stt_engine),
-                ("stt_language", stt_language),
-                ("tts_engine", tts_engine),
-                ("tts_language", tts_language),
-                ("tts_voice", tts_voice),
-                ("wake_word_entity", wake_word_entity),
-                ("wake_word_id", wake_word_id),
-                ("prefer_local_intents", prefer_local_intents),
-            )
-            if val is not UNDEFINED
+            key: value
+            for key, value in update_config.__dict__.items()
+            if value is not UNDEFINED
         }
     )
 
@@ -1968,7 +1961,7 @@ class PipelineRuns:
             return
         if pipeline_runs := self._pipeline_runs.get(item_id):
             # Create a temporary list in case the list is modified while we iterate
-            for pipeline_run in list(pipeline_runs.values()):
+            for pipeline_run in pipeline_runs.copy().values():
                 pipeline_run.abort_wake_word_detection = True
 
 
