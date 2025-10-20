@@ -10,15 +10,12 @@ from urllib.parse import ParseResult, urljoin, urlparse
 import aiohttp
 import aiohttp.client_exceptions
 
-from homeassistant.core import HomeAssistant
 from homeassistant.util.network import is_local
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def verify_redirect_uri(
-    hass: HomeAssistant, client_id: str, redirect_uri: str
-) -> bool:
+async def verify_redirect_uri(client_id: str, redirect_uri: str) -> bool:
     """Verify that the client and redirect uri match."""
     try:
         client_id_parts = _parse_client_id(client_id)
@@ -53,7 +50,7 @@ async def verify_redirect_uri(
 
     # IndieAuth 4.2.2 allows for redirect_uri to be on different domain
     # but needs to be specified in link tag when fetching `client_id`.
-    redirect_uris = await fetch_redirect_uris(hass, client_id)
+    redirect_uris = await fetch_redirect_uris(client_id)
     return redirect_uri in redirect_uris
 
 
@@ -77,7 +74,7 @@ class LinkTagParser(HTMLParser):
             self.found.append(attributes.get("href"))
 
 
-async def fetch_redirect_uris(hass: HomeAssistant, url: str) -> list[str]:
+async def fetch_redirect_uris(url: str) -> list[str]:
     """Find link tag with redirect_uri values.
 
     IndieAuth 4.2.2

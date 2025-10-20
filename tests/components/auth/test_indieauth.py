@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 from homeassistant.components.auth import indieauth
-from homeassistant.core import HomeAssistant
 
 from tests.test_util.aiohttp import AiohttpClientMocker
 
@@ -111,27 +110,27 @@ def test_parse_url_path() -> None:
 async def test_verify_redirect_uri() -> None:
     """Test that we verify redirect uri correctly."""
     assert await indieauth.verify_redirect_uri(
-        None, "http://ex.com", "http://ex.com/callback"
+        "http://ex.com", "http://ex.com/callback"
     )
 
     with patch.object(indieauth, "fetch_redirect_uris", return_value=[]):
         # Different domain
         assert not await indieauth.verify_redirect_uri(
-            None, "http://ex.com", "http://different.com/callback"
+            "http://ex.com", "http://different.com/callback"
         )
 
         # Different scheme
         assert not await indieauth.verify_redirect_uri(
-            None, "http://ex.com", "https://ex.com/callback"
+            "http://ex.com", "https://ex.com/callback"
         )
 
         # Different subdomain
         assert not await indieauth.verify_redirect_uri(
-            None, "https://sub1.ex.com", "https://sub2.ex.com/callback"
+            "https://sub1.ex.com", "https://sub2.ex.com/callback"
         )
 
 
-async def test_find_link_tag(hass: HomeAssistant, mock_session) -> None:
+async def test_find_link_tag(mock_session) -> None:
     """Test finding link tag."""
     mock_session.get(
         "http://127.0.0.1:8000",
@@ -147,12 +146,12 @@ async def test_find_link_tag(hass: HomeAssistant, mock_session) -> None:
 </html>
 """,
     )
-    redirect_uris = await indieauth.fetch_redirect_uris(hass, "http://127.0.0.1:8000")
+    redirect_uris = await indieauth.fetch_redirect_uris("http://127.0.0.1:8000")
 
     assert redirect_uris == ["hass://oauth2_redirect", "http://127.0.0.1:8000/beer"]
 
 
-async def test_find_link_tag_max_size(hass: HomeAssistant, mock_session) -> None:
+async def test_find_link_tag_max_size(mock_session) -> None:
     """Test finding link tag."""
     text = "".join(
         [
@@ -162,7 +161,7 @@ async def test_find_link_tag_max_size(hass: HomeAssistant, mock_session) -> None
         ]
     )
     mock_session.get("http://127.0.0.1:8000", text=text)
-    redirect_uris = await indieauth.fetch_redirect_uris(hass, "http://127.0.0.1:8000")
+    redirect_uris = await indieauth.fetch_redirect_uris("http://127.0.0.1:8000")
 
     assert redirect_uris == ["http://127.0.0.1:8000/wine"]
 
@@ -175,36 +174,32 @@ async def test_verify_redirect_uri_android_ios(client_id) -> None:
     """Test that we verify redirect uri correctly for Android/iOS."""
     with patch.object(indieauth, "fetch_redirect_uris", return_value=[]):
         assert await indieauth.verify_redirect_uri(
-            None, client_id, "homeassistant://auth-callback"
+            client_id, "homeassistant://auth-callback"
         )
 
         assert not await indieauth.verify_redirect_uri(
-            None, client_id, "homeassistant://something-else"
+            client_id, "homeassistant://something-else"
         )
 
         assert not await indieauth.verify_redirect_uri(
-            None, "https://incorrect.com", "homeassistant://auth-callback"
+            "https://incorrect.com", "homeassistant://auth-callback"
         )
 
         if client_id == "https://home-assistant.io/android":
             assert await indieauth.verify_redirect_uri(
-                None,
                 client_id,
                 "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android",
             )
             assert await indieauth.verify_redirect_uri(
-                None,
                 client_id,
                 "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android",
             )
         else:
             assert not await indieauth.verify_redirect_uri(
-                None,
                 client_id,
                 "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android",
             )
             assert not await indieauth.verify_redirect_uri(
-                None,
                 client_id,
                 "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android",
             )

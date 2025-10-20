@@ -156,7 +156,6 @@ from homeassistant.components.http.view import HomeAssistantView
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.config_entry_oauth2_flow import OAuth2AuthorizeCallbackView
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import bind_hass
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
@@ -164,6 +163,8 @@ from homeassistant.util.hass_dict import HassKey
 from . import indieauth, login_flow, mfa_setup_flow
 
 DOMAIN = "auth"
+
+INVALED_CODE = "Invalid code"
 
 type StoreResultType = Callable[[str, Credentials], str]
 type RetrieveResultType = Callable[[str, str], Credentials | None]
@@ -181,7 +182,7 @@ def create_auth_code(
     return hass.data[DATA_STORE](client_id, credential)
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+def async_setup(hass: HomeAssistant) -> bool:
     """Component to allow users to login."""
     store_result, retrieve_result = _create_auth_code_store()
 
@@ -290,7 +291,7 @@ class TokenView(HomeAssistantView):
 
         if (code := data.get("code")) is None:
             return self.json(
-                {"error": "invalid_request", "error_description": "Invalid code"},
+                {"error": "invalid_request", "error_description": INVALED_CODE},
                 status_code=HTTPStatus.BAD_REQUEST,
             )
 
@@ -298,7 +299,7 @@ class TokenView(HomeAssistantView):
 
         if credential is None or not isinstance(credential, Credentials):
             return self.json(
-                {"error": "invalid_request", "error_description": "Invalid code"},
+                {"error": "invalid_request", "error_description": INVALED_CODE},
                 status_code=HTTPStatus.BAD_REQUEST,
             )
 
@@ -428,7 +429,7 @@ class LinkUserView(HomeAssistantView):
         credentials = self._retrieve_credentials(data["client_id"], data["code"])
 
         if credentials is None:
-            return self.json_message("Invalid code", status_code=HTTPStatus.BAD_REQUEST)
+            return self.json_message(INVALED_CODE, status_code=HTTPStatus.BAD_REQUEST)
 
         linked_user = await hass.auth.async_get_user_by_credentials(credentials)
         if linked_user != user and linked_user is not None:
@@ -632,7 +633,7 @@ def websocket_delete_all_refresh_tokens(
     delete_current_token = msg.get("delete_current_token")
     limit_token_types = token_type is not None
 
-    for token in list(connection.user.refresh_tokens.values()):
+    for token in connection.user.refresh_tokens.values():
         if token.id == connection.refresh_token_id:
             # Skip the current refresh token as it has revoke_callback,
             # which cancels/closes the connection.

@@ -295,7 +295,7 @@ class IntegrationOnboardingView(_BaseOnboardingStepView):
 
             # Validate client ID and redirect uri
             if not await indieauth.verify_redirect_uri(
-                request.app[KEY_HASS], data["client_id"], data["redirect_uri"]
+                data["client_id"], data["redirect_uri"]
             ):
                 return self.json_message(
                     "invalid client id or redirect uri", HTTPStatus.BAD_REQUEST

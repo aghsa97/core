@@ -109,6 +109,9 @@ if TYPE_CHECKING:
     from . import StoreResultType
 
 
+INVALID_FLOW_SPECIFIED = "Invalid flow specified"
+
+
 @callback
 def async_setup(
     hass: HomeAssistant, store_result: Callable[[str, Credentials], str]
@@ -268,7 +271,7 @@ class LoginFlowBaseView(HomeAssistantView):
         hass = request.app[KEY_HASS]
 
         if not await indieauth.verify_redirect_uri(
-            hass, client_id, result["context"]["redirect_uri"]
+            client_id, result["context"]["redirect_uri"]
         ):
             return self.json_message("Invalid redirect URI", HTTPStatus.FORBIDDEN)
 
@@ -354,7 +357,7 @@ class LoginFlowResourceView(LoginFlowBaseView):
 
     async def get(self, request: web.Request) -> web.Response:
         """Do not allow getting status of a flow in progress."""
-        return self.json_message("Invalid flow specified", HTTPStatus.NOT_FOUND)
+        return self.json_message(INVALID_FLOW_SPECIFIED, HTTPStatus.NOT_FOUND)
 
     @RequestDataValidator(
         vol.Schema(
@@ -379,7 +382,7 @@ class LoginFlowResourceView(LoginFlowBaseView):
                 return self.json_message("IP address changed", HTTPStatus.BAD_REQUEST)
             result = await self._flow_mgr.async_configure(flow_id, data)
         except data_entry_flow.UnknownFlow:
-            return self.json_message("Invalid flow specified", HTTPStatus.NOT_FOUND)
+            return self.json_message(INVALID_FLOW_SPECIFIED, HTTPStatus.NOT_FOUND)
         except vol.Invalid:
             return self.json_message("User input malformed", HTTPStatus.BAD_REQUEST)
 
@@ -390,6 +393,6 @@ class LoginFlowResourceView(LoginFlowBaseView):
         try:
             self._flow_mgr.async_abort(flow_id)
         except data_entry_flow.UnknownFlow:
-            return self.json_message("Invalid flow specified", HTTPStatus.NOT_FOUND)
+            return self.json_message(INVALID_FLOW_SPECIFIED, HTTPStatus.NOT_FOUND)
 
         return self.json_message("Flow aborted")
