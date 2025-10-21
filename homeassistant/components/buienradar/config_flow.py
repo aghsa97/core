@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from typing import Any, cast
 
@@ -58,6 +59,7 @@ OPTIONS_SCHEMA = vol.Schema(
 
 
 async def _options_suggested_values(handler: SchemaCommonFlowHandler) -> dict[str, Any]:
+    await asyncio.sleep(0)
     parent_handler = cast(SchemaOptionsFlowHandler, handler.parent_handler)
     suggested_values = copy.deepcopy(dict(parent_handler.config_entry.data))
     suggested_values.update(parent_handler.options)

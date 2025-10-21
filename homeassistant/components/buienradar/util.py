@@ -1,5 +1,6 @@
 """Shared utilities for different supported platforms."""
 
+import asyncio
 from datetime import datetime, timedelta
 from http import HTTPStatus
 import logging
@@ -72,6 +73,7 @@ class BrData:
 
     async def update_devices(self):
         """Update all devices/sensors."""
+        await asyncio.sleep(0)
         if not self.devices:
             return
 
