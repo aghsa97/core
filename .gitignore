@@ -8,6 +8,10 @@ tests/testing_config/home-assistant.log*
 data/
 .token
 
+# SonarQube
+.scannerwork
+sonar-project.properties
+
 # Translations
 homeassistant/components/*/translations
 
