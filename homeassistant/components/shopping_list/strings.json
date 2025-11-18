@@ -95,6 +95,10 @@
           "description": "The name of the category to add."
         }
       }
+    },
+    "delete_all": {
+      "name": "Delete all items",
+      "description": "Deletes all items from the shopping list."
     }
   },
   "entity": {
