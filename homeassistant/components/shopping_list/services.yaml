@@ -72,4 +72,6 @@ add_category:
       selector:
         text:
 
+group_by_categories:
+
 delete_all:

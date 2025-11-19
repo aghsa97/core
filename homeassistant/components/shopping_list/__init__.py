@@ -38,6 +38,7 @@ from .const import (
     SERVICE_COMPLETE_ALL,
     SERVICE_COMPLETE_ITEM,
     SERVICE_DELETE_ALL,
+    SERVICE_GROUP_BY_CATEGORIES,
     SERVICE_INCOMPLETE_ALL,
     SERVICE_INCOMPLETE_ITEM,
     SERVICE_REMOVE_ITEM,
@@ -183,6 +184,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if name and not await data.async_add_category(name):
             _LOGGER.error("Failed to add category '%s' (may already exist)", name)
 
+    async def group_by_categories_service(call: ServiceCall) -> None:
+        """Group items by categories from service call."""
+        data = hass.data[DOMAIN]
+        await data.async_group_by_categories(call.context)
+
     async def delete_all_service(call: ServiceCall) -> None:
         """Delete all items from the shopping list."""
         data.items.clear()
@@ -239,6 +245,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         SERVICE_ADD_CATEGORY,
         add_category_service,
         schema=SERVICE_ITEM_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GROUP_BY_CATEGORIES,
+        group_by_categories_service,
+        schema=SERVICE_LIST_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
@@ -501,6 +513,24 @@ class ShoppingData:
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "sorted"},
+            context=context,
+        )
+
+    async def async_group_by_categories(self, context: Context | None = None) -> None:
+        """Group shopping list items by categories."""
+        # Sort items by category, putting items without categories at the end
+        self.items = sorted(
+            self.items,
+            key=lambda x: (
+                str(x.get("category", "")).casefold() if x.get("category") else "zzz",
+                str(x["name"]).casefold(),
+            ),
+        )  # type: ignore[arg-type,return-value]
+        await self.hass.async_add_executor_job(self.save)
+        self._async_notify()
+        self.hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED,
+            {"action": "group_by_categories"},
             context=context,
         )
 
