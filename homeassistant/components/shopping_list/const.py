@@ -9,6 +9,10 @@ ATTR_REVERSE = "reverse"
 
 DEFAULT_REVERSE = False
 
+# Added logic
+ATTR_CATEGORY = "category"
+ATTR_CATEGORIES = "categories"
+SERVICE_REMOVE_CATEGORY = "remove_category"
 SERVICE_ADD_ITEM = "add_item"
 SERVICE_REMOVE_ITEM = "remove_item"
 SERVICE_COMPLETE_ITEM = "complete_item"

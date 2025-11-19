@@ -39,3 +39,13 @@ sort:
       default: false
       selector:
         boolean:
+
+remove_category:
+  description: Remove a category from the shopping list.
+  fields:
+    category:
+      required: true
+      description: The name of the category to remove.
+      example: Groceries
+      selector:
+        text:

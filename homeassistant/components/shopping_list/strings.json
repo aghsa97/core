@@ -73,6 +73,10 @@
           "description": "Whether to sort in reverse (descending) order."
         }
       }
+    },
+    "remove_category": {
+      "name": "Remove category",
+      "description": "Remove a category from the shopping list."
     }
   },
   "entity": {
