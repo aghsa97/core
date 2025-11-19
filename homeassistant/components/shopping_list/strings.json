@@ -103,6 +103,10 @@
     "delete_all": {
       "name": "Delete all items",
       "description": "Deletes all items from the shopping list."
+    },
+    "remove_category": {
+      "name": "Remove category",
+      "description": "Remove a category from the shopping list."
     }
   },
   "entity": {

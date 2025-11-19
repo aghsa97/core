@@ -41,6 +41,8 @@ from .const import (
     SERVICE_GROUP_BY_CATEGORIES,
     SERVICE_INCOMPLETE_ALL,
     SERVICE_INCOMPLETE_ITEM,
+    # Added logic
+    SERVICE_REMOVE_CATEGORY,
     SERVICE_REMOVE_ITEM,
     SERVICE_SORT,
 )
@@ -100,6 +102,7 @@ SERVICE_LIST_SCHEMA = vol.Schema({})
 SERVICE_SORT_SCHEMA = vol.Schema(
     {vol.Optional(ATTR_REVERSE, default=DEFAULT_REVERSE): bool}
 )
+SERVICE_CATEGORY_SCHEMA = vol.Schema({vol.Required(ATTR_CATEGORY): cv.string})
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -198,6 +201,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"}, context=call.context
         )
 
+    async def remove_category_service(call: ServiceCall) -> None:
+        """Remove a category."""
+        data = hass.data[DOMAIN]
+        category_name = call.data[ATTR_CATEGORY]
+        try:
+            await data.async_remove_category(category_name)
+        except NoMatchingShoppingListItem:
+            _LOGGER.error("Removing category failed: %s cannot be found", category_name)
+
     data = hass.data[DOMAIN] = ShoppingData(hass)
     await data.async_load()
 
@@ -258,6 +270,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         delete_all_service,
         schema=SERVICE_LIST_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REMOVE_CATEGORY,
+        remove_category_service,
+        schema=SERVICE_CATEGORY_SCHEMA,
+    )
 
     hass.http.register_view(ShoppingListView)
     hass.http.register_view(CreateShoppingListItemView)
@@ -273,6 +291,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     websocket_api.async_register_command(hass, websocket_handle_categories_list)
     websocket_api.async_register_command(hass, websocket_handle_categories_add)
     websocket_api.async_register_command(hass, websocket_handle_delete_all)
+    websocket_api.async_register_command(hass, websocket_handle_remove_category)
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
@@ -292,6 +311,8 @@ class ShoppingData:
         self.items: list[dict[str, JsonValueType]] = []
         self.categories: list[str] = PREDEFINED_CATEGORIES.copy()
         self._listeners: list[Callable[[], None]] = []
+        # Added logic
+        self.categories: list[str] = []
 
     async def async_add(
         self,
@@ -601,6 +622,21 @@ class ShoppingData:
             if "unit" not in item:
                 item["unit"] = None
 
+    # Added logic
+    async def async_remove_category(self, category: str) -> None:
+        """Remove a category."""
+        if category not in self.categories:
+            raise NoMatchingShoppingListItem(f"Category '{category}' not found")
+
+        self.categories.remove(category)
+        await self.hass.async_add_executor_job(self.save)
+        self._async_notify()
+        self.hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED,
+            {"action": "remove_category", "category": category},
+        )
+
+    # Added logic
     def save(self) -> None:
         """Save the items."""
         save_json(
@@ -895,3 +931,33 @@ async def websocket_handle_delete_all(
     hass.bus.async_fire(EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"})
 
     connection.send_result(msg["id"])
+
+
+# Added logic
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "shopping_list/categories/remove",
+        vol.Required("category"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_handle_remove_category(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle removing shopping list category."""
+    msg_id = msg.pop("id")
+    category = msg.pop("category")
+
+    try:
+        await hass.data[DOMAIN].async_remove_category(category)
+    except NoMatchingShoppingListItem:
+        connection.send_message(
+            websocket_api.error_message(
+                msg_id, "category_not_found", "Category not found"
+            )
+        )
+        return
+
+    connection.send_message(websocket_api.result_message(msg_id))
