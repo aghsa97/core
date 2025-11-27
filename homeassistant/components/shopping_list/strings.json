@@ -95,6 +95,14 @@
           "description": "The name of the category to add."
         }
       }
+    },
+    "group_by_categories": {
+      "name": "Group by categories",
+      "description": "Groups shopping list items by their categories, sorting items alphabetically within each category."
+    },
+    "delete_all": {
+      "name": "Delete all items",
+      "description": "Deletes all items from the shopping list."
     }
   },
   "entity": {

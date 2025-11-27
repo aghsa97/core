@@ -37,6 +37,8 @@ from .const import (
     SERVICE_CLEAR_COMPLETED_ITEMS,
     SERVICE_COMPLETE_ALL,
     SERVICE_COMPLETE_ITEM,
+    SERVICE_DELETE_ALL,
+    SERVICE_GROUP_BY_CATEGORIES,
     SERVICE_INCOMPLETE_ALL,
     SERVICE_INCOMPLETE_ITEM,
     SERVICE_REMOVE_ITEM,
@@ -182,6 +184,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if name and not await data.async_add_category(name):
             _LOGGER.error("Failed to add category '%s' (may already exist)", name)
 
+    async def group_by_categories_service(call: ServiceCall) -> None:
+        """Group items by categories from service call."""
+        data = hass.data[DOMAIN]
+        await data.async_group_by_categories(call.context)
+
+    async def delete_all_service(call: ServiceCall) -> None:
+        """Delete all items from the shopping list."""
+        data.items.clear()
+        await hass.async_add_executor_job(data.save)
+        data._async_notify()
+        hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"}, context=call.context
+        )
+
     data = hass.data[DOMAIN] = ShoppingData(hass)
     await data.async_load()
 
@@ -230,6 +246,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         add_category_service,
         schema=SERVICE_ITEM_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GROUP_BY_CATEGORIES,
+        group_by_categories_service,
+        schema=SERVICE_LIST_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_ALL,
+        delete_all_service,
+        schema=SERVICE_LIST_SCHEMA,
+    )
 
     hass.http.register_view(ShoppingListView)
     hass.http.register_view(CreateShoppingListItemView)
@@ -244,6 +272,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     websocket_api.async_register_command(hass, websocket_handle_reorder)
     websocket_api.async_register_command(hass, websocket_handle_categories_list)
     websocket_api.async_register_command(hass, websocket_handle_categories_add)
+    websocket_api.async_register_command(hass, websocket_handle_delete_all)
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
@@ -484,6 +513,24 @@ class ShoppingData:
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "sorted"},
+            context=context,
+        )
+
+    async def async_group_by_categories(self, context: Context | None = None) -> None:
+        """Group shopping list items by categories."""
+        # Sort items by category, putting items without categories at the end
+        self.items = sorted(
+            self.items,
+            key=lambda x: (
+                str(x.get("category", "")).casefold() if x.get("category") else "zzz",
+                str(x["name"]).casefold(),
+            ),
+        )  # type: ignore[arg-type,return-value]
+        await self.hass.async_add_executor_job(self.save)
+        self._async_notify()
+        self.hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED,
+            {"action": "group_by_categories"},
             context=context,
         )
 
@@ -829,3 +876,22 @@ async def websocket_handle_categories_add(
         return
 
     connection.send_result(msg["id"], {"categories": data.get_categories()})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "shopping_list/items/delete_all"}
+)
+@websocket_api.async_response
+async def websocket_handle_delete_all(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle deleting all shopping list items."""
+    data = hass.data[DOMAIN]
+    data.items.clear()
+    await hass.async_add_executor_job(data.save)
+    data._async_notify()
+    hass.bus.async_fire(EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"})
+
+    connection.send_result(msg["id"])

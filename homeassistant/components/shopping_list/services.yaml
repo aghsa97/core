@@ -71,3 +71,7 @@ add_category:
       example: "Snacks"
       selector:
         text:
+
+group_by_categories:
+
+delete_all:
