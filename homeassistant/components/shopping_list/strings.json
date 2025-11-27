@@ -17,8 +17,20 @@
       "description": "Adds an item to the shopping list.",
       "fields": {
         "name": {
-          "name": "[%key:common::config_flow::data::name%]",
+          "name": "Name",
           "description": "The name of the item to add."
+        },
+        "quantity": {
+          "name": "Quantity",
+          "description": "The quantity of the item."
+        },
+        "unit": {
+          "name": "Unit",
+          "description": "The unit of measurement."
+        },
+        "category": {
+          "name": "Category",
+          "description": "The category for this item."
         }
       }
     },
@@ -77,6 +89,23 @@
     "remove_category": {
       "name": "Remove category",
       "description": "Remove a category from the shopping list."
+    "add_category": {
+      "name": "Add category",
+      "description": "Adds a new custom category to the shopping list.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "The name of the category to add."
+        }
+      }
+    },
+    "group_by_categories": {
+      "name": "Group by categories",
+      "description": "Groups shopping list items by their categories, sorting items alphabetically within each category."
+    },
+    "delete_all": {
+      "name": "Delete all items",
+      "description": "Deletes all items from the shopping list."
     }
   },
   "entity": {

@@ -41,6 +41,8 @@ from .pipeline import (
     async_setup_pipeline_store,
     async_update_pipeline,
 )
+from .select import AssistPipelineSelect, VadSensitivitySelect
+from .vad import VadSensitivity
 from .websocket_api import async_register_websocket_api
 
 __all__ = (
@@ -51,16 +53,18 @@ __all__ = (
     "SAMPLE_CHANNELS",
     "SAMPLE_RATE",
     "SAMPLE_WIDTH",
+    "AssistPipelineSelect",
     "AudioSettings",
     "Pipeline",
     "PipelineEvent",
     "PipelineEventType",
     "PipelineNotFound",
+    "VadSensitivity",
+    "VadSensitivitySelect",
     "WakeWordSettings",
     "async_create_default_pipeline",
     "async_get_pipelines",
     "async_pipeline_from_audio_stream",
-    "async_setup",
     "async_update_pipeline",
 )
 
@@ -121,6 +125,19 @@ async def async_pipeline_from_audio_stream(
     event_callback: PipelineEventCallback,
     audio_config: PipelineAudioConfig,
     context_config: PipelineContextConfig,
+    stt_metadata: stt.SpeechMetadata,
+    stt_stream: AsyncIterable[bytes],
+    wake_word_phrase: str | None = None,
+    pipeline_id: str | None = None,
+    conversation_id: str | None = None,
+    tts_audio_output: str | dict[str, Any] | None = None,
+    wake_word_settings: WakeWordSettings | None = None,
+    audio_settings: AudioSettings | None = None,
+    device_id: str | None = None,
+    satellite_id: str | None = None,
+    start_stage: PipelineStage = PipelineStage.STT,
+    end_stage: PipelineStage = PipelineStage.TTS,
+    conversation_extra_system_prompt: str | None = None,
 ) -> None:
     """Create an audio pipeline from an audio stream.
 
@@ -136,6 +153,12 @@ async def async_pipeline_from_audio_stream(
             stt_stream=audio_config.stt_stream,
             wake_word_phrase=context_config.wake_word_phrase,
             conversation_extra_system_prompt=context_config.conversation_extra_system_prompt,
+            device_id=device_id,
+            satellite_id=satellite_id,
+            stt_metadata=stt_metadata,
+            stt_stream=stt_stream,
+            wake_word_phrase=wake_word_phrase,
+            conversation_extra_system_prompt=conversation_extra_system_prompt,
             run=PipelineRun(
                 hass,
                 context=context,
