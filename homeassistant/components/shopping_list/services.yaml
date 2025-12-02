@@ -77,11 +77,9 @@ group_by_categories:
 delete_all:
 
 remove_category:
-  description: Remove a category from the shopping list.
   fields:
-    category:
+    name:
       required: true
-      description: The name of the category to remove.
       example: Groceries
       selector:
         text:
