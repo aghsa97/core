@@ -106,7 +106,13 @@
     },
     "remove_category": {
       "name": "Remove category",
-      "description": "Remove a category from the shopping list."
+      "description": "Remove a category from the shopping list.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "The name of the category to add."
+        }
+      }
     }
   },
   "entity": {

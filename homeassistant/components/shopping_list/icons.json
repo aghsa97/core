@@ -16,6 +16,15 @@
     "remove_item": {
       "service": "mdi:cart-remove"
     },
+    "group_by_categories": {
+      "service": "mdi:shape"
+    },
+    "delete_all": {
+      "service": "mdi:cart-remove"
+    },
+    "remove_category": {
+      "service": "mdi:cart-remove"
+    },
     "complete_item": {
       "service": "mdi:cart-check"
     },
