@@ -9,6 +9,7 @@ from homeassistant.components.shopping_list.const import (
     ATTR_REVERSE,
     DOMAIN,
     EVENT_SHOPPING_LIST_UPDATED,
+    SERVICE_ADD_CATEGORY,
     SERVICE_ADD_ITEM,
     SERVICE_CLEAR_COMPLETED_ITEMS,
     SERVICE_COMPLETE_ITEM,
@@ -199,6 +200,40 @@ async def test_ws_get_items(
     assert not data[0]["complete"]
     assert data[1]["name"] == "wine"
     assert not data[1]["complete"]
+
+
+async def test_ws_get_categories(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test get shopping_list categories websocket command."""
+
+    data = hass.data[DOMAIN]
+
+    await data.async_add_category("testCategory")
+    await data.async_add_category("secondTestCategory")
+
+    client = await hass_ws_client(hass)
+    events = async_capture_events(hass, EVENT_SHOPPING_LIST_UPDATED)
+
+    await client.send_json({"id": 11, "type": "shopping_list/categories/list"})
+    msg = await client.receive_json()
+    assert len(events) == 0  # no event is fired for fetching the categories
+
+    assert msg["id"] == 11
+    assert msg["success"] is True
+    categories = msg["result"]
+    assert isinstance(categories, list)
+    assert len(categories) >= 2
+
+    first_category = next(cat for cat in categories if cat["name"] == "testCategory")
+    assert first_category is not None
+    assert first_category["predefined"] is False
+
+    second_category = next(
+        cat for cat in categories if cat["name"] == "secondTestCategory"
+    )
+    assert second_category is not None
+    assert second_category["predefined"] is False
 
 
 async def test_deprecated_api_update(
@@ -552,6 +587,78 @@ async def test_ws_add_item_fail(
     assert len(hass.data["shopping_list"].items) == 0
 
 
+async def test_ws_add_category(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test adding shopping_list category websocket command."""
+
+    client = await hass_ws_client(hass)
+    events = async_capture_events(hass, EVENT_SHOPPING_LIST_UPDATED)
+    await client.send_json(
+        {"id": 5, "type": "shopping_list/categories/add", "name": "testAddCategory"}
+    )
+    msg = await client.receive_json()
+    assert msg["success"] is True
+    data = msg["result"]
+    assert "categories" in data
+    categories = data["categories"]
+    assert any(
+        category["name"] == "testAddCategory" and category["predefined"] is False
+        for category in categories
+    )
+    assert len(events) == 1
+
+    stored_categories = hass.data[DOMAIN].categories
+    assert "testAddCategory" in stored_categories
+
+
+async def test_ws_add_category_fail_case_sensitivity(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test adding a duplicate category fails, ignoring case."""
+
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {"id": 1, "type": "shopping_list/categories/add", "name": "testAddCategory"}
+    )
+    await client.receive_json()
+    await client.send_json(
+        {"id": 2, "type": "shopping_list/categories/add", "name": "Testaddcategory"}
+    )
+    msg = await client.receive_json()
+    assert msg["success"] is False
+    assert msg["id"] == 2
+    assert msg["error"]["code"] == "invalid_category"
+
+
+async def test_ws_add_category_fail_validation(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test invalid category names, empty or too long."""
+
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "shopping_list/categories/add",
+            "name": "   ",  # not allowed empty names after stripping
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"] is False
+    assert msg["id"] == 1
+    assert msg["error"]["code"] == "invalid_category"
+
+    long_name = "t" * 51  # longer than allowed 50 characters
+    await client.send_json(
+        {"id": 2, "type": "shopping_list/categories/add", "name": long_name}
+    )
+    msg = await client.receive_json()
+    assert msg["success"] is False
+    assert msg["id"] == 2
+    assert msg["error"]["code"] == "invalid_category"
+
+
 async def test_ws_remove_item(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
 ) -> None:
@@ -762,6 +869,19 @@ async def test_add_item_service(hass: HomeAssistant, sl_setup) -> None:
         blocking=True,
     )
     assert len(hass.data[DOMAIN].items) == 1
+    assert len(events) == 1
+
+
+async def test_add_category_service(hass: HomeAssistant, sl_setup) -> None:
+    """Test adding shopping_list category service."""
+    events = async_capture_events(hass, EVENT_SHOPPING_LIST_UPDATED)
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_ADD_CATEGORY,
+        {ATTR_NAME: "testCategory"},
+        blocking=True,
+    )
+    assert len(hass.data[DOMAIN].categories) >= 1
     assert len(events) == 1
 
 
