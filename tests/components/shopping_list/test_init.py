@@ -6,6 +6,7 @@ import pytest
 
 from homeassistant.components.shopping_list import NoMatchingShoppingListItem
 from homeassistant.components.shopping_list.const import (
+    ATTR_CATEGORY,
     ATTR_REVERSE,
     DOMAIN,
     EVENT_SHOPPING_LIST_UPDATED,
@@ -15,6 +16,7 @@ from homeassistant.components.shopping_list.const import (
     SERVICE_COMPLETE_ITEM,
     SERVICE_DELETE_ALL,
     SERVICE_GROUP_BY_CATEGORIES,
+    SERVICE_REMOVE_CATEGORY,
     SERVICE_REMOVE_ITEM,
     SERVICE_SORT,
 )
@@ -303,6 +305,47 @@ async def test_deprecated_api_update(
         "unit": None,
     }
 
+async def test_remove_existing_category(hass: HomeAssistant, sl_setup) -> None:
+    """Test that an existing category is removed successfully."""
+
+    data = hass.data[DOMAIN]
+
+    # Ensure there is at least one category
+    if not data.categories:
+        data.categories.append("SampleCategory")
+
+    category_to_remove = data.categories[0]
+
+    # Call the remove_category service
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_REMOVE_CATEGORY,
+        {ATTR_CATEGORY: category_to_remove},
+        blocking=True,
+    )
+
+    # The category should no longer exist
+    assert category_to_remove not in data.categories
+
+
+async def test_remove_non_existing_category(hass: HomeAssistant, sl_setup) -> None:
+    """Test that removing a non-existing category does not change categories."""
+
+    data = hass.data[DOMAIN]
+
+    # Snapshot current categories
+    before = list(data.categories)
+
+    # Attempt to remove a category that does not exist; component logs error
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_REMOVE_CATEGORY,
+        {ATTR_CATEGORY: "NotInList"},
+        blocking=True,
+    )
+
+    # Categories should be unchanged
+    assert data.categories == before
 
 async def test_ws_update_item(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
@@ -585,6 +628,49 @@ async def test_ws_add_item_fail(
     assert msg["success"] is False
     assert len(events) == 0
     assert len(hass.data["shopping_list"].items) == 0
+
+async def test_ws_remove_item(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test removing shopping_list item websocket command."""
+    client = await hass_ws_client(hass)
+    events = async_capture_events(hass, EVENT_SHOPPING_LIST_UPDATED)
+    await client.send_json({"id": 5, "type": "shopping_list/items/add", "name": "soda"})
+    msg = await client.receive_json()
+    first_item_id = msg["result"]["id"]
+    await client.send_json(
+        {"id": 6, "type": "shopping_list/items/add", "name": "cheese"}
+    )
+    msg = await client.receive_json()
+    assert len(events) == 2
+
+    items = hass.data["shopping_list"].items
+    assert len(items) == 2
+
+    await client.send_json(
+        {"id": 7, "type": "shopping_list/items/remove", "item_id": first_item_id}
+    )
+    msg = await client.receive_json()
+    assert len(events) == 3
+    assert msg["success"] is True
+
+    items = hass.data["shopping_list"].items
+    assert len(items) == 1
+    assert items[0]["name"] == "cheese"
+
+async def test_ws_remove_item_fail(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator, sl_setup
+) -> None:
+    """Test removing shopping_list item failure websocket command."""
+    client = await hass_ws_client(hass)
+    events = async_capture_events(hass, EVENT_SHOPPING_LIST_UPDATED)
+    await client.send_json({"id": 5, "type": "shopping_list/items/add", "name": "soda"})
+    msg = await client.receive_json()
+    await client.send_json({"id": 6, "type": "shopping_list/items/remove"})
+    msg = await client.receive_json()
+    assert msg["success"] is False
+    assert len(events) == 1
+    assert len(hass.data["shopping_list"].items) == 1
 
 
 async def test_ws_add_category(
