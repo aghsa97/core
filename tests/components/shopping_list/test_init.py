@@ -1053,8 +1053,8 @@ async def test_group_by_categories_service(hass: HomeAssistant, sl_setup) -> Non
         "Dairy",
         "Fruit & Vegetables",
         "Fruit & Vegetables",
-        None,
-        None,
+        "Other",
+        "Other",
     ]
 
     assert categories == expected_categories
@@ -1142,7 +1142,7 @@ async def test_group_by_categories_no_categories(hass: HomeAssistant, sl_setup) 
 
     # Verify all have no category
     categories = [item.get("category") for item in hass.data[DOMAIN].items]
-    assert all(cat is None for cat in categories)
+    assert all(cat == "Other" for cat in categories)
 
 
 async def test_async_group_by_categories_method(hass: HomeAssistant, sl_setup) -> None:

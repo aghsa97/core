@@ -6,7 +6,6 @@ DOMAIN = "shopping_list"
 
 
 ATTR_REVERSE = "reverse"
-ATTR_CATEGORY = "category"
 
 DEFAULT_REVERSE = False
 

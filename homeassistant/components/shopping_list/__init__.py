@@ -93,7 +93,7 @@ SERVICE_ITEM_SCHEMA = vol.Schema({vol.Required(ATTR_NAME): cv.string})
 SERVICE_ADD_ITEM_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_NAME): cv.string,
-        vol.Optional(ATTR_CATEGORY): cv.string,
+        vol.Optional(ATTR_CATEGORY, default="Other"): cv.string,
         vol.Optional(ATTR_QUANTITY): vol.Any(int, float),
         vol.Optional(ATTR_UNIT): vol.In(VALID_UNITS),
     }
@@ -196,7 +196,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         """Delete all items from the shopping list."""
         data.items.clear()
         await hass.async_add_executor_job(data.save)
-        data._async_notify()
+        data.async_notify()
         hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"}, context=call.context
         )
@@ -302,6 +302,10 @@ class NoMatchingShoppingListItem(Exception):
     """No matching item could be found in the shopping list."""
 
 
+class ForbiddenRemoval(Exception):
+    """Removal of a certain category or item is not allowed."""
+
+
 class ShoppingData:
     """Class to hold shopping list data."""
 
@@ -311,8 +315,6 @@ class ShoppingData:
         self.items: list[dict[str, JsonValueType]] = []
         self.categories: list[str] = PREDEFINED_CATEGORIES.copy()
         self._listeners: list[Callable[[], None]] = []
-        # Added logic
-        self.categories: list[str] = []
 
     async def async_add(
         self,
@@ -328,6 +330,9 @@ class ShoppingData:
             _LOGGER.error("Invalid unit '%s'. Must be one of: %s", unit, VALID_UNITS)
             unit = None
 
+        if category is not None and (not self._is_existing_category(category)):
+            await self.async_add_category(category)
+
         item: dict[str, JsonValueType] = {
             "name": name,
             "id": uuid.uuid4().hex,
@@ -338,7 +343,7 @@ class ShoppingData:
         }
         self.items.append(item)
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "add", "item": item},
@@ -375,7 +380,7 @@ class ShoppingData:
             removed.append(item)
         self.items = list(items_dict.values())
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         for item in removed:
             self.hass.bus.async_fire(
                 EVENT_SHOPPING_LIST_UPDATED,
@@ -399,7 +404,7 @@ class ShoppingData:
             _LOGGER.debug("Completing %s", item)
             item["complete"] = True
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         for item in complete_items:
             self.hass.bus.async_fire(
                 EVENT_SHOPPING_LIST_UPDATED,
@@ -432,7 +437,7 @@ class ShoppingData:
         info = ITEM_UPDATE_SCHEMA(info)
         item.update(info)
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "update", "item": item},
@@ -444,7 +449,7 @@ class ShoppingData:
         """Clear completed items."""
         self.items = [itm for itm in self.items if not itm["complete"]]
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "clear"},
@@ -458,7 +463,7 @@ class ShoppingData:
         for item in self.items:
             item.update(info)
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "update_list"},
@@ -493,7 +498,7 @@ class ShoppingData:
             new_items.append(value)
         self.items = new_items
         self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "reorder"},
@@ -518,7 +523,7 @@ class ShoppingData:
             dst_idx -= 1
         self.items.insert(dst_idx, src_item)
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "reorder"},
@@ -530,7 +535,7 @@ class ShoppingData:
         """Sort items by name."""
         self.items = sorted(self.items, key=lambda item: item["name"], reverse=reverse)  # type: ignore[arg-type,return-value]
         self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "sorted"},
@@ -546,9 +551,9 @@ class ShoppingData:
                 str(x.get("category", "")).casefold() if x.get("category") else "zzz",
                 str(x["name"]).casefold(),
             ),
-        )  # type: ignore[arg-type,return-value]
+        )
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "group_by_categories"},
@@ -569,12 +574,17 @@ class ShoppingData:
             return False
 
         # Check for duplicates (case-insensitive)
-        if any(cat.lower() == name.lower() for cat in self.categories):
+        if self._is_existing_category(name):
             _LOGGER.error("Category '%s' already exists", name)
             return False
 
         self.categories.append(name)
         await self.hass.async_add_executor_job(self.save)
+        self.async_notify()
+        self.hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED,
+            {"action": "add_category", "category": name},
+        )
         return True
 
     def get_categories(self) -> list[dict[str, str | bool]]:
@@ -583,6 +593,11 @@ class ShoppingData:
             {"name": cat, "predefined": cat in PREDEFINED_CATEGORIES}
             for cat in self.categories
         ]
+
+    def _is_existing_category(self, category: str) -> bool:
+        if any(cat.lower() == category.lower() for cat in self.categories):
+            return True
+        return False
 
     async def async_load(self) -> None:
         """Load items."""
@@ -630,7 +645,7 @@ class ShoppingData:
 
         self.categories.remove(category)
         await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
+        self.async_notify()
         self.hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED,
             {"action": "remove_category", "category": category},
@@ -653,7 +668,7 @@ class ShoppingData:
         self._listeners.append(cb)
         return unsub
 
-    def _async_notify(self) -> None:
+    def async_notify(self) -> None:
         """Notify all listeners that data has been updated."""
         for listener in self._listeners:
             listener()
@@ -927,7 +942,7 @@ async def websocket_handle_delete_all(
     data = hass.data[DOMAIN]
     data.items.clear()
     await hass.async_add_executor_job(data.save)
-    data._async_notify()
+    data.async_notify()
     hass.bus.async_fire(EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"})
 
     connection.send_result(msg["id"])
@@ -950,12 +965,27 @@ async def websocket_handle_remove_category(
     msg_id = msg.pop("id")
     category = msg.pop("category")
 
+    def can_be_removed(category: str) -> bool:
+        if category.lower() == "other":
+            raise ForbiddenRemoval
+        return True
+
     try:
+        can_be_removed(category)
         await hass.data[DOMAIN].async_remove_category(category)
     except NoMatchingShoppingListItem:
         connection.send_message(
             websocket_api.error_message(
                 msg_id, "category_not_found", "Category not found"
+            )
+        )
+        return
+    except ForbiddenRemoval:
+        connection.send_message(
+            websocket_api.error_message(
+                msg_id,
+                "category_removal_forbidden",
+                "Category 'other' can't be removed",
             )
         )
         return
