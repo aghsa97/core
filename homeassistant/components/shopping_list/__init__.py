@@ -29,6 +29,7 @@ from .const import (
     ATTR_QUANTITY,
     ATTR_REVERSE,
     ATTR_UNIT,
+    DEFAULT_CATEGORY,
     DEFAULT_REVERSE,
     DOMAIN,
     EVENT_SHOPPING_LIST_UPDATED,
@@ -93,7 +94,7 @@ SERVICE_ITEM_SCHEMA = vol.Schema({vol.Required(ATTR_NAME): cv.string})
 SERVICE_ADD_ITEM_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_NAME): cv.string,
-        vol.Optional(ATTR_CATEGORY): cv.string,
+        vol.Optional(ATTR_CATEGORY, default=DEFAULT_CATEGORY): cv.string,
         vol.Optional(ATTR_QUANTITY): vol.Any(int, float),
         vol.Optional(ATTR_UNIT): vol.In(VALID_UNITS),
     }
@@ -196,7 +197,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         """Delete all items from the shopping list."""
         data.items.clear()
         await hass.async_add_executor_job(data.save)
-        data._async_notify()
+        data._async_notify()  # noqa: SLF001
         hass.bus.async_fire(
             EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"}, context=call.context
         )
@@ -204,7 +205,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     async def remove_category_service(call: ServiceCall) -> None:
         """Remove a category."""
         data = hass.data[DOMAIN]
-        category_name = call.data[ATTR_CATEGORY]
+        category_name = call.data[ATTR_NAME]
         try:
             await data.async_remove_category(category_name)
         except NoMatchingShoppingListItem:
@@ -274,7 +275,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         DOMAIN,
         SERVICE_REMOVE_CATEGORY,
         remove_category_service,
-        schema=SERVICE_CATEGORY_SCHEMA,
+        schema=SERVICE_ITEM_SCHEMA,
     )
 
     hass.http.register_view(ShoppingListView)
@@ -302,6 +303,10 @@ class NoMatchingShoppingListItem(Exception):
     """No matching item could be found in the shopping list."""
 
 
+class ForbiddenRemoval(Exception):
+    """Removal of a certain category or item is not allowed."""
+
+
 class ShoppingData:
     """Class to hold shopping list data."""
 
@@ -311,8 +316,6 @@ class ShoppingData:
         self.items: list[dict[str, JsonValueType]] = []
         self.categories: list[str] = PREDEFINED_CATEGORIES.copy()
         self._listeners: list[Callable[[], None]] = []
-        # Added logic
-        self.categories: list[str] = []
 
     async def async_add(
         self,
@@ -327,6 +330,9 @@ class ShoppingData:
         if unit is not None and unit not in VALID_UNITS:
             _LOGGER.error("Invalid unit '%s'. Must be one of: %s", unit, VALID_UNITS)
             unit = None
+
+        if category is not None and (not self._is_existing_category(category)):
+            await self.async_add_category(category)
 
         item: dict[str, JsonValueType] = {
             "name": name,
@@ -546,7 +552,7 @@ class ShoppingData:
                 str(x.get("category", "")).casefold() if x.get("category") else "zzz",
                 str(x["name"]).casefold(),
             ),
-        )  # type: ignore[arg-type,return-value]
+        )
         await self.hass.async_add_executor_job(self.save)
         self._async_notify()
         self.hass.bus.async_fire(
@@ -569,12 +575,17 @@ class ShoppingData:
             return False
 
         # Check for duplicates (case-insensitive)
-        if any(cat.lower() == name.lower() for cat in self.categories):
+        if self._is_existing_category(name):
             _LOGGER.error("Category '%s' already exists", name)
             return False
 
         self.categories.append(name)
         await self.hass.async_add_executor_job(self.save)
+        self._async_notify()
+        self.hass.bus.async_fire(
+            EVENT_SHOPPING_LIST_UPDATED,
+            {"action": "add_category", "category": name},
+        )
         return True
 
     def get_categories(self) -> list[dict[str, str | bool]]:
@@ -583,6 +594,16 @@ class ShoppingData:
             {"name": cat, "predefined": cat in PREDEFINED_CATEGORIES}
             for cat in self.categories
         ]
+
+    def _is_existing_category(self, category: str) -> bool:
+        if any(cat.lower() == category.lower() for cat in self.categories):
+            return True
+        return False
+
+    def _can_be_removed(self, category: str) -> bool:
+        if category.lower() == DEFAULT_CATEGORY.lower():
+            return False
+        return True
 
     async def async_load(self) -> None:
         """Load items."""
@@ -616,7 +637,7 @@ class ShoppingData:
         # Ensure all items have required fields
         for item in self.items:
             if "category" not in item:
-                item["category"] = None
+                item["category"] = DEFAULT_CATEGORY
             if "quantity" not in item:
                 item["quantity"] = None
             if "unit" not in item:
@@ -628,13 +649,14 @@ class ShoppingData:
         if category not in self.categories:
             raise NoMatchingShoppingListItem(f"Category '{category}' not found")
 
-        self.categories.remove(category)
-        await self.hass.async_add_executor_job(self.save)
-        self._async_notify()
-        self.hass.bus.async_fire(
-            EVENT_SHOPPING_LIST_UPDATED,
-            {"action": "remove_category", "category": category},
-        )
+        if self._can_be_removed(category=category):
+            self.categories.remove(category)
+            await self.hass.async_add_executor_job(self.save)
+            self._async_notify()
+            self.hass.bus.async_fire(
+                EVENT_SHOPPING_LIST_UPDATED,
+                {"action": "remove_category", "category": category},
+            )
 
     # Added logic
     def save(self) -> None:
@@ -927,7 +949,7 @@ async def websocket_handle_delete_all(
     data = hass.data[DOMAIN]
     data.items.clear()
     await hass.async_add_executor_job(data.save)
-    data._async_notify()
+    data._async_notify()  # noqa: SLF001
     hass.bus.async_fire(EVENT_SHOPPING_LIST_UPDATED, {"action": "delete_all"})
 
     connection.send_result(msg["id"])
@@ -937,7 +959,7 @@ async def websocket_handle_delete_all(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "shopping_list/categories/remove",
-        vol.Required("category"): str,
+        vol.Required("name"): str,
     }
 )
 @websocket_api.async_response
@@ -947,15 +969,29 @@ async def websocket_handle_remove_category(
     msg: dict[str, Any],
 ) -> None:
     """Handle removing shopping list category."""
-    msg_id = msg.pop("id")
-    category = msg.pop("category")
+    msg_id = msg["id"]
+    category = msg["name"]
+
+    def _check_can_remove(cat: str) -> None:
+        if not hass.data[DOMAIN]._can_be_removed(cat):  # noqa: SLF001
+            raise ForbiddenRemoval
 
     try:
+        _check_can_remove(category)
         await hass.data[DOMAIN].async_remove_category(category)
     except NoMatchingShoppingListItem:
         connection.send_message(
             websocket_api.error_message(
                 msg_id, "category_not_found", "Category not found"
+            )
+        )
+        return
+    except ForbiddenRemoval:
+        connection.send_message(
+            websocket_api.error_message(
+                msg_id,
+                "category_removal_forbidden",
+                "Category 'other' can't be removed",
             )
         )
         return

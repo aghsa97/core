@@ -6,13 +6,13 @@ DOMAIN = "shopping_list"
 
 
 ATTR_REVERSE = "reverse"
-ATTR_CATEGORY = "category"
 
 DEFAULT_REVERSE = False
 
 # Added logic
 ATTR_CATEGORY = "category"
 ATTR_CATEGORIES = "categories"
+DEFAULT_CATEGORY = "Other"
 SERVICE_REMOVE_CATEGORY = "remove_category"
 SERVICE_ADD_ITEM = "add_item"
 SERVICE_REMOVE_ITEM = "remove_item"
