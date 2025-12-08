@@ -758,7 +758,7 @@ def websocket_handle_items(
         vol.Required("type"): "shopping_list/items/add",
         vol.Required("name"): str,
         vol.Required("category"): vol.Any(str, None),
-        vol.Optional("quantity"): vol.Any(float, None),
+        vol.Optional("quantity"): vol.Any(int, float, None),
         vol.Optional("unit"): vol.In(VALID_UNITS),
     }
 )
